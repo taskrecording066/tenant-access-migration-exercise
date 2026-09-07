@@ -1,2 +1,4 @@
 # Migration plan
 `001_foundation.sql` creates UUID-keyed tenants/users/projects, membership constraints, and indexes. Seed backfill maps legacy integer IDs to UUIDs and preserves project tenant relationships. Dual-read accepts either UUID or numeric legacy ID. Rollback is documented in `001_foundation.down.sql`, but destructive down migration requires a backup and a write freeze; compatibility clients must stop sending numeric IDs only after observation confirms no use.
+
+Migration runner records applied versions and uses foreign_keys=ON.
