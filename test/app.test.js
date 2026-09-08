@@ -1,11 +1,163 @@
-const test=require('node:test');const assert=require('node:assert/strict');const request=require('node:http');const app=require('../src/app');const {db}=require('../src/db/database');
-function call(method,path,user,body){return new Promise((resolve,reject)=>{const s=app.listen(0,()=>{const r=request.request({port:s.address().port,path,method,headers:{...(user&&{'x-user-id':user}),'content-type':'application/json'}},x=>{let d='';x.on('data',c=>d+=c);x.on('end',()=>{s.close();resolve({status:x.statusCode,body:d?JSON.parse(d):null})})});r.on('error',reject);if(body)r.write(JSON.stringify(body));r.end()})})}
-const tenant=name=>db.prepare('SELECT id FROM tenants WHERE name=?').get(name).id;
-const project=(name)=>db.prepare('SELECT id,tenant_id FROM projects WHERE name=?').get(name);
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const request = require("node:http");
+const app = require("../src/app");
+const { db } = require("../src/db/database");
+function call(method, path, user, body) {
+  return new Promise((resolve, reject) => {
+    const s = app.listen(0, () => {
+      const r = request.request(
+        {
+          port: s.address().port,
+          path,
+          method,
+          headers: {
+            ...(user && { "x-user-id": user }),
+            "content-type": "application/json",
+          },
+        },
+        (x) => {
+          let d = "";
+          x.on("data", (c) => (d += c));
+          x.on("end", () => {
+            s.close();
+            resolve({ status: x.statusCode, body: d ? JSON.parse(d) : null });
+          });
+        },
+      );
+      r.on("error", reject);
+      if (body) r.write(JSON.stringify(body));
+      r.end();
+    });
+  });
+}
+const tenant = (name) =>
+  db.prepare("SELECT id FROM tenants WHERE name=?").get(name).id;
+const project = (name) =>
+  db.prepare("SELECT id,tenant_id FROM projects WHERE name=?").get(name);
 
-test('migration shape, relationships, indexes, and status',async()=>{for(const t of ['users','tenants','projects','memberships'])assert.ok(db.prepare(`SELECT * FROM ${t}`).all().length);assert.equal(db.prepare('SELECT count(*) n FROM projects p LEFT JOIN tenants t ON t.id=p.tenant_id WHERE t.id IS NULL').get().n,0);assert.equal((await call('GET','/migration/status')).body.compatibility,'legacy_id accepted for transition');assert.equal(db.prepare("SELECT count(*) n FROM pragma_index_list('projects') WHERE name='projects_tenant_idx'").get().n,1)});
-test('legacy numeric IDs resolve and fixtures are deterministic',async()=>{assert.equal(db.prepare('SELECT name FROM users WHERE id=?').get('00000000-0000-4000-8000-000000000101').name,'Alice Admin');assert.equal((await call('GET','/fixtures')).body.users.find(u=>u.legacy_id===101).id,'00000000-0000-4000-8000-000000000101')});
-test('tenant isolation and unknown identities',async()=>{const globex=tenant('Globex Manufacturing');assert.equal((await call('GET',`/tenants/${globex}/projects`,'101')).status,403);assert.equal((await call('GET','/tenants','9999')).status,401);assert.equal((await call('GET','/tenants')).status,401)});
-test('authorized role update succeeds',async()=>{const acme=tenant('Acme Logistics');assert.equal((await call('PUT',`/tenants/${acme}/members/102/role`,'101',{role:'viewer'})).status,204);assert.equal(db.prepare('SELECT role FROM memberships WHERE user_id=(SELECT id FROM users WHERE legacy_id=102) AND tenant_id=?').get(acme).role,'viewer')});
-test('cross-tenant role update, viewer/operator, and platform-admin paths',async()=>{const acme=tenant('Acme Logistics');assert.equal((await call('PUT',`/tenants/${acme}/members/201/role`,'101',{role:'operator'})).status,404);assert.equal((await call('PUT',`/tenants/${acme}/members/102/role`,'102',{role:'operator'})).status,403);assert.equal((await call('PUT',`/tenants/${acme}/members/102/role`,'201',{role:'operator'})).status,403);assert.equal((await call('PUT',`/tenants/${acme}/members/102/role`,'999',{role:'operator'})).status,204)});
-test('cross-tenant delete does not mutate, while authorized delete succeeds',async()=>{const acme=tenant('Acme Logistics');const globex=tenant('Globex Manufacturing');const foreign=project('Globex Plants');assert.equal((await call('DELETE',`/tenants/${acme}/projects/${foreign.id}`,'101')).status,404);assert.equal(db.prepare('SELECT count(*) n FROM projects WHERE id=? AND tenant_id=?').get(foreign.id,globex).n,1);const own=project('Acme Fleet');assert.equal((await call('DELETE',`/tenants/${acme}/projects/${own.id}`,'101')).status,204);assert.equal(db.prepare('SELECT count(*) n FROM projects WHERE id=?').get(own.id).n,0)});
+test("migration shape, relationships, indexes, and status", async () => {
+  for (const t of ["users", "tenants", "projects", "memberships"])
+    assert.ok(db.prepare(`SELECT * FROM ${t}`).all().length);
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) n FROM projects p LEFT JOIN tenants t ON t.id=p.tenant_id WHERE t.id IS NULL",
+      )
+      .get().n,
+    0,
+  );
+  assert.equal(
+    (await call("GET", "/migration/status")).body.compatibility,
+    "legacy_id accepted for transition",
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT count(*) n FROM pragma_index_list('projects') WHERE name='projects_tenant_idx'",
+      )
+      .get().n,
+    1,
+  );
+});
+test("legacy numeric IDs resolve and fixtures are deterministic", async () => {
+  assert.equal(
+    db
+      .prepare("SELECT name FROM users WHERE id=?")
+      .get("00000000-0000-4000-8000-000000000101").name,
+    "Alice Admin",
+  );
+  assert.equal(
+    (await call("GET", "/fixtures")).body.users.find((u) => u.legacy_id === 101)
+      .id,
+    "00000000-0000-4000-8000-000000000101",
+  );
+});
+test("tenant isolation and unknown identities", async () => {
+  const globex = tenant("Globex Manufacturing");
+  assert.equal(
+    (await call("GET", `/tenants/${globex}/projects`, "101")).status,
+    403,
+  );
+  assert.equal((await call("GET", "/tenants", "9999")).status, 401);
+  assert.equal((await call("GET", "/tenants")).status, 401);
+});
+test("authorized role update succeeds", async () => {
+  const acme = tenant("Acme Logistics");
+  assert.equal(
+    (
+      await call("PUT", `/tenants/${acme}/members/102/role`, "101", {
+        role: "viewer",
+      })
+    ).status,
+    204,
+  );
+  assert.equal(
+    db
+      .prepare(
+        "SELECT role FROM memberships WHERE user_id=(SELECT id FROM users WHERE legacy_id=102) AND tenant_id=?",
+      )
+      .get(acme).role,
+    "viewer",
+  );
+});
+test("cross-tenant role update, viewer/operator, and platform-admin paths", async () => {
+  const acme = tenant("Acme Logistics");
+  assert.equal(
+    (
+      await call("PUT", `/tenants/${acme}/members/201/role`, "101", {
+        role: "operator",
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await call("PUT", `/tenants/${acme}/members/102/role`, "102", {
+        role: "operator",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call("PUT", `/tenants/${acme}/members/102/role`, "201", {
+        role: "operator",
+      })
+    ).status,
+    403,
+  );
+  assert.equal(
+    (
+      await call("PUT", `/tenants/${acme}/members/102/role`, "999", {
+        role: "operator",
+      })
+    ).status,
+    204,
+  );
+});
+test("cross-tenant delete does not mutate, while authorized delete succeeds", async () => {
+  const acme = tenant("Acme Logistics");
+  const globex = tenant("Globex Manufacturing");
+  const foreign = project("Globex Plants");
+  assert.equal(
+    (await call("DELETE", `/tenants/${acme}/projects/${foreign.id}`, "101"))
+      .status,
+    404,
+  );
+  assert.equal(
+    db
+      .prepare("SELECT count(*) n FROM projects WHERE id=? AND tenant_id=?")
+      .get(foreign.id, globex).n,
+    1,
+  );
+  const own = project("Acme Fleet");
+  assert.equal(
+    (await call("DELETE", `/tenants/${acme}/projects/${own.id}`, "101")).status,
+    204,
+  );
+  assert.equal(
+    db.prepare("SELECT count(*) n FROM projects WHERE id=?").get(own.id).n,
+    0,
+  );
+});
