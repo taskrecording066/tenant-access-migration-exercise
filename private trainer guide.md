@@ -32,11 +32,11 @@ values for Insomnia/Postman variables rather than inventing UUIDs.
 
 Expected authorization checks:
 
-* `101` can update an Acme member with
+- `101` can update an Acme member with
   `PUT /tenants/:tenantId/members/:userId/role`.
-* `102` (operator) and viewers receive `403` for role updates and deletion.
-* `999` (platform admin) can update members across seeded tenants.
-* A cross-tenant role target is rejected and a cross-tenant delete
+- `102` (operator) and viewers receive `403` for role updates and deletion.
+- `999` (platform admin) can update members across seeded tenants.
+- A cross-tenant role target is rejected and a cross-tenant delete
   `DELETE /tenants/:tenantId/projects/:projectId` returns `404` without deleting.
 
 The migration is explicitly a fresh-schema foundation with dual-read legacy user IDs.
