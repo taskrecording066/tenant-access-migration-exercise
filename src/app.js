@@ -1,12 +1,80 @@
-const express=require('express'); const repo=require('./repository/access'); const {membership}=repo; const {requirePermission,rank}=require('./auth/policy');
-const app=express();app.use(express.json());
-app.use((req,res,next)=>{const id=req.header('x-user-id'); if(id){req.user=repo.userById(id); if(!req.user)return res.status(401).json({error:'unknown user'});} next()});
-app.use('/tenants/:tenantId',(req,res,next)=>{if(!req.user)return res.status(401).json({error:'authentication required'}); const m=membership(req.user,req.params.tenantId);if(!m)return res.status(403).json({error:'tenant access denied'});req.tenantRole=m.role;next()});
-app.get('/health',(req,res)=>res.json({status:'ok'})); app.get('/migration/status',(req,res)=>res.json({version:require('./db/database').db.prepare('SELECT max(version) version FROM schema_migrations').get().version,compatibility:'legacy_id accepted for transition'}));
-app.get('/fixtures',(req,res)=>res.json(repo.fixtures()));
-app.get('/users',(req,res)=>{if(!req.user)return res.status(401).json({error:'authentication required'});res.json({users:[req.user]})});
-app.get('/tenants',(req,res)=>{if(!req.user)return res.status(401).json({error:'authentication required'});res.json({tenants:repo.tenants(req.user)})});
-app.get('/tenants/:tenantId/projects',requirePermission('project:read'),(req,res)=>res.json({projects:repo.projects(req.user,req.params.tenantId)}));
-app.put('/tenants/:tenantId/members/:userId/role',requirePermission('member:manage'),(req,res)=>{const target=repo.userById(req.params.userId);if(!target)return res.status(404).json({error:'user not found'});const role=req.body.role;if(!['viewer','operator','tenant_admin','platform_admin'].includes(role))return res.status(400).json({error:'invalid role'});if(role==='platform_admin'&&req.tenantRole!=='platform_admin')return res.status(403).json({error:'cannot grant platform_admin'});if(!repo.updateRole(req.user,target,req.params.tenantId,role))return res.status(404).json({error:'member not found'});res.status(204).end()});
-app.delete('/tenants/:tenantId/projects/:projectId',requirePermission('project:delete'),(req,res)=>{const p=repo.deleteProject(req.user,req.params.projectId,req.params.tenantId);if(!p)return res.status(404).json({error:'project not found'});res.status(204).end()});
-module.exports=app;
+const express = require("express");
+const repo = require("./repository/access");
+const { membership } = repo;
+const { requirePermission, rank } = require("./auth/policy");
+const app = express();
+app.use(express.json());
+app.use((req, res, next) => {
+  const id = req.header("x-user-id");
+  if (id) {
+    req.user = repo.userById(id);
+    if (!req.user) return res.status(401).json({ error: "unknown user" });
+  }
+  next();
+});
+app.use("/tenants/:tenantId", (req, res, next) => {
+  if (!req.user)
+    return res.status(401).json({ error: "authentication required" });
+  const m = membership(req.user, req.params.tenantId);
+  if (!m) return res.status(403).json({ error: "tenant access denied" });
+  req.tenantRole = m.role;
+  next();
+});
+app.get("/health", (req, res) => res.json({ status: "ok" }));
+app.get("/migration/status", (req, res) =>
+  res.json({
+    version: require("./db/database")
+      .db.prepare("SELECT max(version) version FROM schema_migrations")
+      .get().version,
+    compatibility: "legacy_id accepted for transition",
+  }),
+);
+app.get("/fixtures", (req, res) => res.json(repo.fixtures()));
+app.get("/users", (req, res) => {
+  if (!req.user)
+    return res.status(401).json({ error: "authentication required" });
+  res.json({ users: [req.user] });
+});
+app.get("/tenants", (req, res) => {
+  if (!req.user)
+    return res.status(401).json({ error: "authentication required" });
+  res.json({ tenants: repo.tenants(req.user) });
+});
+app.get(
+  "/tenants/:tenantId/projects",
+  requirePermission("project:read"),
+  (req, res) =>
+    res.json({ projects: repo.projects(req.user, req.params.tenantId) }),
+);
+app.put(
+  "/tenants/:tenantId/members/:userId/role",
+  requirePermission("member:manage"),
+  (req, res) => {
+    const target = repo.userById(req.params.userId);
+    if (!target) return res.status(404).json({ error: "user not found" });
+    const role = req.body.role;
+    if (
+      !["viewer", "operator", "tenant_admin", "platform_admin"].includes(role)
+    )
+      return res.status(400).json({ error: "invalid role" });
+    if (role === "platform_admin" && req.tenantRole !== "platform_admin")
+      return res.status(403).json({ error: "cannot grant platform_admin" });
+    if (!repo.updateRole(req.user, target, req.params.tenantId, role))
+      return res.status(404).json({ error: "member not found" });
+    res.status(204).end();
+  },
+);
+app.delete(
+  "/tenants/:tenantId/projects/:projectId",
+  requirePermission("project:delete"),
+  (req, res) => {
+    const p = repo.deleteProject(
+      req.user,
+      req.params.projectId,
+      req.params.tenantId,
+    );
+    if (!p) return res.status(404).json({ error: "project not found" });
+    res.status(204).end();
+  },
+);
+module.exports = app;

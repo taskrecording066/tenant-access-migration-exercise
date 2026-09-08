@@ -17,9 +17,9 @@ both UUIDs and legacy numeric IDs (`101`, `102`, `201`, `202`, `999`) are accept
 
 Important requests:
 
-* `GET /tenants/:tenantId/projects`
-* `PUT /tenants/:tenantId/members/:userId/role` with `{"role":"operator"}`
-* `DELETE /tenants/:tenantId/projects/:projectId`
+- `GET /tenants/:tenantId/projects`
+- `PUT /tenants/:tenantId/members/:userId/role` with `{"role":"operator"}`
+- `DELETE /tenants/:tenantId/projects/:projectId`
 
 Every write is checked against the route tenant before mutation. The down migration is
 destructive and is not run automatically; take a backup and use a write freeze before
